@@ -1,0 +1,121 @@
+
+tfortran: Simple pre-processor to help write multi-dimensional Fortran
+codes.
+
+Transformations
+===============
+
+A few simple transforms, by example:
+
+#. Indexing and specifying array dimensions::
+
+   Basic transforms:
+
+     1d: {{ nx, ny, nz }}  ->  nx
+     2d: {{ nx, ny, nz }}  ->  nx, ny
+     3d: {{ nx, ny, nz }}  ->  nx, ny, nz
+
+   Auto transforms:
+
+     1d: {{ n }}  ->  n1
+     2d: {{ n }}  ->  n1, n2
+     3d: {{ n }}  ->  n1, n2, n3
+
+   With components:
+
+     1d: {{ i, j, k; c }}  ->  i, c
+     2d: {{ i, j, k; c }}  ->  i, j, c
+     3d: {{ i, j, k; c }}  ->  i, j, k, c
+
+   A dot (.) in the component slot is replaced by the dimension::
+
+     2d: {{ i, j, k; . }}  ->  i, j, 2
+     3d: {{ i, j, k; . }}  ->  i, j, k, 3
+
+   Component indexing is subject to several modifiers:
+
+   #. One-dimensional compression (``compress``): if true, a ``1`` or
+      ``.`` in the component slot is supressed when the dimension is 1::
+
+       1d: {{ i, j, k; 1 }}  ->  i
+       1d: {{ i, j, k; . }}  ->  i
+       1d: {{ i, j, k; c }}  ->  i, c
+       2d: {{ i, j, k; 1 }}  ->  i, j, 1
+       2d: {{ i, j, k; c }}  ->  i, j, c
+
+      This is enabled by default.
+
+   #. Interleaved components (``interleave``): if true the component
+      piece is moved to the front::
+
+       2d: {{ i, j, k; c }}  ->  c, i, j
+       3d: {{ i, j, k; c }}  ->  c, i, j, k
+
+      This is enabled by default.
+
+   #. C/row-major storage (``row_major``): if true the indexes are
+      transposed::
+
+       2d: {{ i, j, k; c }}  ->  c, j, i
+       3d: {{ i, j, k; c }}  ->  c, k, j, i
+
+      This is disabled by default.
+
+      If both ``row_major`` and ``interleave`` are true, then::
+
+       2d: {{ i, j, k; c }}  ->  j, i, c
+       3d: {{ i, j, k; c }}  ->  k, j, i, c
+
+
+#. Selecting appropriate statement::
+
+     1d: ({ cos(x); cos(x*y); cos(x*y*z) })  ->  cos(x)
+     2d: ({ cos(x); cos(x*y); cos(x*y*z) })  ->  cos(x*y)
+     3d: ({ cos(x); cos(x*y); cos(x*y*z) })  ->  cos(x*y*z)
+
+
+#. Concatenation::
+
+     1d: [{ x**2; + y**2; + z**2 }]  ->  x**2
+     2d: [{ x**2; + y**2; + z**2 }]  ->  x**2 + y**2
+     3d: [{ x**2; + y**2; + z**2 }]  ->  x**2 + y**2 + z**2
+
+
+#. Multiple do loops::
+
+     do multi(i, j, k; nx, ny, nz)
+       ! body
+     end do multi
+
+   transforms into
+
+     do i = 1, nx
+       do j = 1, ny
+         do k = 1, nz
+           ! body
+         end do
+       end do
+     end do
+
+
+Example
+=======
+
+Consider the following subroutine::
+
+  subroutine gradient(f, {{n}}, h, gradf) bind(c, name="divergence")
+    real(c_double), intent(in)        :: f({{n}})
+    integer(c_int), intent(in), value :: {{n}}
+    real(c_double), intent(in), value :: h
+    real(c_double), intent(out)       :: gradf({{n;.}})
+
+    integer :: {{ i, j, k }}
+
+    do multi({{i, j, k}}; {{n}})
+      {[
+        gradf({{i,j,k;1}}) = f({{i,j,k}});
+        gradf({{i,j,k;2}}) = f({{i,j,k}});
+        gradf({{i,j,k;3}}) = f({{i,j,k}})
+      ]}
+    end do multi
+  end subroutine divergence
