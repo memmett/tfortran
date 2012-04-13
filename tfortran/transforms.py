@@ -1,6 +1,7 @@
 """TFortran transforms."""
 
 from pyparsing import *
+import re
 
 
 class BaseTransform(object):
@@ -26,9 +27,56 @@ class BaseTransform(object):
         raise NotImplementedError
 
 
+class PlainIndexing(BaseTransform):
+
+    parser = nestedExpr('[[', ']]', Regex(r"[^]]+"))
+
+    def __init__(self):
+        super(PlainIndexing, self).__init__()
+        self.compress   = True
+        self.interleave = True
+
+
+    def auto_expand(self, dims):
+        if len(dims) == 1:
+            base = dims[0]
+            return map(lambda x: base + str(x), range(1, self.dim+1))
+        return dims
+
+
+    def action(self, src, loc, toks):
+        toks = toks[0][0].split(';')
+
+        if len(toks) > 1:
+            dims, comp = toks
+            dims = dims.split(',')
+            dims = self.auto_expand(dims)
+
+            if comp == '.':
+                comp = str(self.dim)
+
+            if self.compress and self.dim == 1 and comp == '1':
+                return "%s" % dims[0]
+
+        else:
+            dims = toks[0]
+            comp = None
+            dims = dims.split(',')
+            dims = self.auto_expand(dims)
+
+        idxs = list(dims[:self.dim])
+        if comp:
+            if self.interleave:
+                idxs.insert(0, comp)
+            else:
+                idxs.append(comp)
+
+        return ', '.join(map(lambda x: str(x).strip(), idxs))
+
+
 class Indexing(BaseTransform):
 
-    parser = nestedExpr('{{', '}}', Regex(r"[^{}]+"))
+    parser = nestedExpr('{{', '}}', Regex(r"[^}]+"))
 
     def __init__(self):
         super(Indexing, self).__init__()
@@ -65,21 +113,22 @@ class Indexing(BaseTransform):
             dims = self.auto_expand(dims)
 
         idxs = list(dims[:self.dim])
+
+        if self.row_major:
+            idxs.reverse()
+
         if comp:
             if self.interleave:
                 idxs.insert(0, comp)
             else:
-                idx.append(comp)
-
-        if self.row_major:
-            idxs.reverse()
+                idxs.append(comp)
 
         return ', '.join(map(lambda x: str(x).strip(), idxs))
 
 
 class Select(BaseTransform):
 
-    parser = nestedExpr('({', '})', delimitedList(Regex(r"[^{};]+"), ';'))
+    parser = nestedExpr('({', '})', delimitedList(Regex(r"[^};]+").leaveWhitespace(), ';'))
 
     def action(self, src, loc, toks):
         return toks[0][self.dim-1]
@@ -87,7 +136,7 @@ class Select(BaseTransform):
 
 class Concat(BaseTransform):
 
-    parser = nestedExpr('[{', '}]', delimitedList(Regex(r"[^{};]+"), ';'))
+    parser = nestedExpr('[{', '}]', delimitedList(Regex(r"[^};]+").leaveWhitespace(), ';'))
 
     def action(self, src, loc, toks):
         return ' '.join(toks[0][:self.dim])
@@ -95,18 +144,22 @@ class Concat(BaseTransform):
 
 class DoMulti(BaseTransform):
 
-    parser = ( CaselessKeyword('do multi')
+    parser = ( CaselessKeyword('do')
                + nestedExpr('(', ')',
                             delimitedList(Word(alphanums)) + ';'
                             + delimitedList(Word(alphanums)))
-               + Regex(".*")
-               + CaselessKeyword('end do multi') )
+               + nestedExpr('multi', 'end do').setParseAction(keepOriginalText) )
 
     def action(self, src, loc, toks):
+
         nloops = int((len(toks[1])-1)/2)
         ivars  = toks[1][:nloops]
         ranges = toks[1][nloops+1:]
         body   = toks[2]
+
+        start = body.find('multi') + 5
+        end   = body.rfind('end do')
+        body  = body[start:end]
 
         src = []
         for i in range(nloops):
@@ -120,8 +173,9 @@ class DoMulti(BaseTransform):
 
 # order is important...
 transforms = [
+    Indexing(),
+    PlainIndexing(),
     Select(),
     Concat(),
-    Indexing(),
     DoMulti(),
     ]
