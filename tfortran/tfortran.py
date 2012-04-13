@@ -2,7 +2,8 @@
 
 from transforms import transforms
 
-def transform_file(filename, dim=1, output="out.f90"):
+def transform_file(filename, output="out.f90",
+                   dim=1, interleave=True, compress=True, row_major=False):
     """Apply tfortran source code transformations.
 
     :param filename: input file name
@@ -16,6 +17,9 @@ def transform_file(filename, dim=1, output="out.f90"):
 
     for transform in transforms:
         transform.dim = dim
+        transform.compress = compress
+        transform.interleave = interleave
+        transform.row_major = row_major
         template = transform(template)
 
     with open(output, 'w') as f:
