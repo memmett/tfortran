@@ -9,17 +9,25 @@ A few simple transforms, by example:
 
 #. Indexing and specifying array dimensions::
 
-   Basic transforms:
+   Basic indexing (order preserved):
+
+     1d: [[ nx, ny, nz ]]  ->  nx
+     2d: [[ nx, ny, nz ]]  ->  nx, ny
+     3d: [[ nx, ny, nz ]]  ->  nx, ny, nz
+
+   Auto expansion:
+
+     1d: [[ n ]]  ->  n1
+     2d: [[ n ]]  ->  n1, n2
+     3d: [[ n ]]  ->  n1, n2, n3
+
+   Basic indexing (order depends on modifiers):
+
+   XXX
 
      1d: {{ nx, ny, nz }}  ->  nx
      2d: {{ nx, ny, nz }}  ->  nx, ny
      3d: {{ nx, ny, nz }}  ->  nx, ny, nz
-
-   Auto transforms:
-
-     1d: {{ n }}  ->  n1
-     2d: {{ n }}  ->  n1, n2
-     3d: {{ n }}  ->  n1, n2, n3
 
    With components:
 

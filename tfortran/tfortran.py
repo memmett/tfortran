@@ -3,7 +3,7 @@
 from transforms import transforms
 
 def transform_file(filename, output="out.f90",
-                   dim=1, interleave=True, compress=True, row_major=False):
+                   dim=1, interleave=False, compress=True, row_major=False):
     """Apply tfortran source code transformations.
 
     :param filename: input file name

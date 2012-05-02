@@ -6,8 +6,8 @@ import tfortran
 parser = argparse.ArgumentParser(description='Pre-process Fortran source')
 parser.add_argument('-d', dest='dim', type=int, default=3,
                     help='dimenions')
-parser.add_argument('-i', dest='interleave', default=True, action='store_false',
-                    help='disable interleaving of components')
+parser.add_argument('-i', dest='interleave', default=False, action='store_true',
+                    help='interleave components')
 parser.add_argument('-r', dest='row_major', default=False, action='store_true',
                     help='assume row-major (C) array storage')
 parser.add_argument('-c', dest='compress', default=True, action='store_false',
