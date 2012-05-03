@@ -1,6 +1,6 @@
 """Templated Fortran (tfortran)."""
 
-from transforms import transforms
+from transforms import Transform
 
 def transform_file(filename, output="out.f90",
                    dim=1, interleave=False, compress=True, row_major=False):
@@ -15,12 +15,13 @@ def transform_file(filename, output="out.f90",
     with open(filename, 'r') as f:
         template = f.read()
 
-    for transform in transforms:
-        transform.dim = dim
-        transform.compress = compress
-        transform.interleave = interleave
-        transform.row_major = row_major
-        template = transform(template)
+    transform = Transform()
+    transform.dim = dim
+    transform.compress = compress
+    transform.interleave = interleave
+    transform.row_major = row_major
+
+    transformed = transform.transform(template)
 
     with open(output, 'w') as f:
-        f.write(template)
+        f.write(transformed)

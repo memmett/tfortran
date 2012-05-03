@@ -1,99 +1,60 @@
 """TFortran transforms."""
 
-from pyparsing import *
 import re
 
+class Transform(object):
 
-class BaseTransform(object):
 
     def __init__(self):
-        self._dim = None
-        self.parser.setParseAction(self.action)
+        self.dim = None
+        self.compress = True
+        self.interleave = False
+        self.row_major = True
 
-    @property
-    def dim(self):
-        if self._dim:
-            return self._dim
-        raise ValueError('dimension not set')
+        # basic transforms: one of {,[,(, then {, then some stuff, then }, then one of ),],}
+        self.bt = re.compile('({|\(|\[){([^{}]+)}(\)|\]|})')
 
-    @dim.setter
-    def dim(self, value):
-        self._dim = value
-
-    def __call__(self, string):
-        return self.parser.transformString(string)
-
-    def action(self, src, loc, toks):
-        raise NotImplementedError
-
-
-class PlainIndexing(BaseTransform):
-
-    parser = nestedExpr('[[', ']]', Regex(r"[^]]+"))
-
-    def __init__(self):
-        super(PlainIndexing, self).__init__()
-        self.compress   = True
-        self.interleave = True
+        # do multi: do multi(i, j, k; nx, ny, nz) ... end do multi
+        self.dm = re.compile('do\s+multi\(([^)]+)\)(.*?)end\s+do\s+multi', re.DOTALL)
 
 
     def auto_expand(self, dims):
+        """Transform [ 'n' ] to [ 'n1', 'n2', 'n3' ]."""
+
         if len(dims) == 1:
             base = dims[0]
             return map(lambda x: base + str(x), range(1, self.dim+1))
         return dims
 
 
-    def action(self, src, loc, toks):
-        toks = toks[0][0].split(';')
-
-        if len(toks) > 1:
-            dims, comp = toks
-            dims = dims.split(',')
-            dims = self.auto_expand(dims)
-
-            if comp == '.':
-                comp = str(self.dim)
-
-            if self.compress and self.dim == 1 and comp == '1':
-                return "%s" % dims[0]
-
-        else:
-            dims = toks[0]
-            comp = None
-            dims = dims.split(',')
-            dims = self.auto_expand(dims)
-
-        idxs = list(dims[:self.dim])
-        if comp:
-            if self.interleave:
-                idxs.insert(0, comp)
-            else:
-                idxs.append(comp)
-
-        return ', '.join(map(lambda x: str(x).strip(), idxs))
+    def select(self, string):
+        toks = string.split(';')
+        return toks[self.dim-1]
 
 
-class Indexing(BaseTransform):
-
-    parser = nestedExpr('{{', '}}', Regex(r"[^}]+"))
-
-    def __init__(self):
-        super(Indexing, self).__init__()
-        self.compress   = True
-        self.interleave = True
-        self.row_major  = False
+    def concat(self, string):
+        toks = string.split(';')
+        return ''.join(toks[:self.dim])
 
 
-    def auto_expand(self, dims):
-        if len(dims) == 1:
-            base = dims[0]
-            return map(lambda x: base + str(x), range(1, self.dim+1))
-        return dims
+    def do_multi(self, indexes, body):
+
+        toks = indexes.split(';')
+        ltoks = toks[0].split(',') # loop tokens
+        rtoks = toks[1].split(',') # range tokens
+
+        src = []
+        for i in range(len(ltoks)):
+            src.append('do %s = 1, %s' % (ltoks[i], rtoks[i]))
+        src.append(body)
+        for i in range(len(ltoks)):
+            src.append('end do')
+
+        return '\n'.join(src)
 
 
-    def action(self, src, loc, toks):
-        toks = toks[0][0].split(';')
+    def indexing(self, string):
+        toks = string.split(';')
 
         if len(toks) > 1:
             dims, comp = toks
@@ -126,56 +87,37 @@ class Indexing(BaseTransform):
         return ', '.join(map(lambda x: str(x).strip(), idxs))
 
 
-class Select(BaseTransform):
+    def transform(self, cur):
 
-    parser = nestedExpr('({', '})', delimitedList(Regex(r"[^};]+").leaveWhitespace(), ';'))
+        # first pass: curly brace transforms
+        while True:
+            m = self.bt.search(cur)
+            if m:
+                new = cur[:m.start(0)]
+                
+                if m.group(1) == '{':
+                    new += self.indexing(m.group(2))
+                elif m.group(1) == '[':
+                    new += self.concat(m.group(2))
+                elif m.group(1) == '(':
+                    new += self.select(m.group(2))
 
-    def action(self, src, loc, toks):
-        return toks[0][self.dim-1]
+                new = new + cur[m.end(0):]
+                cur = new
+            else:
+                break
 
+        # second pass: do multi
+        while True:
+            m = self.dm.search(cur)
+            if m:
+                new = cur[:m.start(0)]
+                
+                new += self.do_multi(m.group(1), m.group(2))
 
-class Concat(BaseTransform):
+                new = new + cur[m.end(0):]
+                cur = new
+            else:
+                break
 
-    parser = nestedExpr('[{', '}]', delimitedList(Regex(r"[^};]+").leaveWhitespace(), ';'))
-
-    def action(self, src, loc, toks):
-        return ' '.join(toks[0][:self.dim])
-
-
-class DoMulti(BaseTransform):
-
-    parser = ( CaselessKeyword('do')
-               + nestedExpr('(', ')',
-                            delimitedList(Word(alphanums)) + ';'
-                            + delimitedList(Word(alphanums)))
-               + nestedExpr('multi', 'end do').setParseAction(keepOriginalText) )
-
-    def action(self, src, loc, toks):
-
-        nloops = int((len(toks[1])-1)/2)
-        ivars  = toks[1][:nloops]
-        ranges = toks[1][nloops+1:]
-        body   = toks[2]
-
-        start = body.find('multi') + 5
-        end   = body.rfind('end do')
-        body  = body[start:end]
-
-        src = []
-        for i in range(nloops):
-            src.append('do %s = 1, %s' % (ivars[i], ranges[i]))
-        src.append(body)
-        for i in range(nloops):
-            src.append('end do')
-
-        return '\n'.join(src)
-
-
-# order is important...
-transforms = [
-    Indexing(),
-    PlainIndexing(),
-    Select(),
-    Concat(),
-    DoMulti(),
-    ]
+        return cur
