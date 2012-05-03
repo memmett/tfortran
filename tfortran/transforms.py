@@ -11,8 +11,8 @@ class Transform(object):
         self.interleave = False
         self.row_major = True
 
-        # basic transforms: one of {,[,(, then {, then some stuff, then }, then one of ),],}
-        self.bt = re.compile('({|\(|\[){([^{}]+)}(\)|\]|})')
+        # basic transforms: one of <,{,[,(, then { some stuff }, then one of ),],},>
+        self.bt = re.compile('(<|{|\(|\[){([^{}]+)}(\)|\]|}|>)')
 
         # do multi: do multi(i, j, k; nx, ny, nz) ... end do multi
         self.dm = re.compile('do\s+multi\(([^)]+)\)(.*?)end\s+do\s+multi', re.DOTALL)
@@ -53,7 +53,7 @@ class Transform(object):
         return '\n'.join(src)
 
 
-    def indexing(self, string):
+    def indexing(self, string, plain=False):
         toks = string.split(';')
 
         if len(toks) > 1:
@@ -75,7 +75,7 @@ class Transform(object):
 
         idxs = list(dims[:self.dim])
 
-        if self.row_major:
+        if not plain and self.row_major:
             idxs.reverse()
 
         if comp:
@@ -96,7 +96,9 @@ class Transform(object):
                 new = cur[:m.start(0)]
                 
                 if m.group(1) == '{':
-                    new += self.indexing(m.group(2))
+                    new += self.indexing(m.group(2), plain=False)
+                elif m.group(1) == '<':
+                    new += self.indexing(m.group(2), plain=True)
                 elif m.group(1) == '[':
                     new += self.concat(m.group(2))
                 elif m.group(1) == '(':
@@ -112,9 +114,7 @@ class Transform(object):
             m = self.dm.search(cur)
             if m:
                 new = cur[:m.start(0)]
-                
                 new += self.do_multi(m.group(1), m.group(2))
-
                 new = new + cur[m.end(0):]
                 cur = new
             else:
