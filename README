@@ -2,56 +2,64 @@
 tfortran: Simple pre-processor to help write multi-dimensional Fortran
 codes.
 
+Basic usage
+===========
+
+To transform ``input`` and write to ``output``::
+
+  $ tfortran [-d DIMENSION] [-i] [-r] [-c] input output
+
+The default dimension is 3.
+
+
 Transformations
 ===============
 
 A few simple transforms, by example:
 
-#. Indexing and specifying array dimensions::
+#. Basic indexing (order is preserved)::
 
-   Basic indexing (order preserved):
+   With three indexes:
 
-     1d: [[ nx, ny, nz ]]  ->  nx
-     2d: [[ nx, ny, nz ]]  ->  nx, ny
-     3d: [[ nx, ny, nz ]]  ->  nx, ny, nz
-
-   Auto expansion:
-
-     1d: [[ n ]]  ->  n1
-     2d: [[ n ]]  ->  n1, n2
-     3d: [[ n ]]  ->  n1, n2, n3
-
-   Basic indexing (order depends on modifiers):
-
-   XXX
-
-     1d: {{ nx, ny, nz }}  ->  nx
-     2d: {{ nx, ny, nz }}  ->  nx, ny
-     3d: {{ nx, ny, nz }}  ->  nx, ny, nz
+     1d: <{ nx, ny, nz }>  ->  nx
+     2d: <{ nx, ny, nz }>  ->  nx, ny
+     3d: <{ nx, ny, nz }>  ->  nx, ny, nz
 
    With components:
 
-     1d: {{ i, j, k; c }}  ->  i, c
-     2d: {{ i, j, k; c }}  ->  i, j, c
-     3d: {{ i, j, k; c }}  ->  i, j, k, c
+     1d: <{ i, j, k; c }>  ->  i, c
+     2d: <{ i, j, k; c }>  ->  i, j, c
+     3d: <{ i, j, k; c }>  ->  i, j, k, c
 
-   A dot (.) in the component slot is replaced by the dimension::
+   Auto expansion:
 
-     2d: {{ i, j, k; . }}  ->  i, j, 2
-     3d: {{ i, j, k; . }}  ->  i, j, k, 3
+     1d: <{ n }>  ->  n1
+     2d: <{ n }>  ->  n1, n2
+     3d: <{ n }>  ->  n1, n2, n3
 
-   Component indexing is subject to several modifiers:
+   Auto expansion with components:
 
-   #. One-dimensional compression (``compress``): if true, a ``1`` or
-      ``.`` in the component slot is supressed when the dimension is 1::
+     1d: <{ n; c }>  ->  n1, c
+     2d: <{ n; c }>  ->  n1, n2, c
+     3d: <{ n; c }>  ->  n1, n2, n3, c
 
-       1d: {{ i, j, k; 1 }}  ->  i
-       1d: {{ i, j, k; . }}  ->  i
-       1d: {{ i, j, k; c }}  ->  i, c
-       2d: {{ i, j, k; 1 }}  ->  i, j, 1
-       2d: {{ i, j, k; c }}  ->  i, j, c
 
-      This is enabled by default.
+   One-dimensional compression (``compress``): if true, a ``1`` or
+   ``.`` in the component slot is supressed when the dimension is 1::
+
+       1d: <{ i, j, k; 1 }>  ->  i
+       1d: <{ i, j, k; . }>  ->  i
+       1d: <{ i, j, k; c }>  ->  i, c
+       2d: <{ i, j, k; 1 }>  ->  i, j, 1
+       2d: <{ i, j, k; c }>  ->  i, j, c
+
+   This is enabled by default (disable with ``-c``).
+
+
+#. Modified indexing (order depends on modifiers):
+
+   This is the same as basic indexing (above), except using ``{{`` and
+   ``}}``.  Modified indexing is subject to several modifiers:
 
    #. Interleaved components (``interleave``): if true the component
       piece is moved to the front::
@@ -59,23 +67,23 @@ A few simple transforms, by example:
        2d: {{ i, j, k; c }}  ->  c, i, j
        3d: {{ i, j, k; c }}  ->  c, i, j, k
 
-      This is enabled by default.
+       The is disabled by default (enable with ``-i``).
 
-   #. C/row-major storage (``row_major``): if true the indexes are
-      transposed::
-
-       2d: {{ i, j, k; c }}  ->  c, j, i
-       3d: {{ i, j, k; c }}  ->  c, k, j, i
-
-      This is disabled by default.
-
-      If both ``row_major`` and ``interleave`` are true, then::
+   #. C/row-major storage (``row_major``): if true the spatial indexes
+      are transposed::
 
        2d: {{ i, j, k; c }}  ->  j, i, c
        3d: {{ i, j, k; c }}  ->  k, j, i, c
 
+      This is disabled by default (enable with ``-r``).
 
-#. Selecting appropriate statement::
+   Note that if both ``row_major`` and ``interleave`` are true, then::
+
+       2d: {{ i, j, k; c }}  ->  c, j, i
+       3d: {{ i, j, k; c }}  ->  c, k, j, i
+
+
+#. Selecting appropriate statements::
 
      1d: ({ cos(x); cos(x*y); cos(x*y*z) })  ->  cos(x)
      2d: ({ cos(x); cos(x*y); cos(x*y*z) })  ->  cos(x*y)
@@ -105,25 +113,61 @@ A few simple transforms, by example:
        end do
      end do
 
+   You can optionally supply to/from ranges as well:
+
+     do multi(i, j, k; -L, -L, -L; L, L, L)
+       ! body
+     end do multi
+
+   transforms into
+
+     do i = -L, L
+       do j = -L, L
+         do k = -L, L
+           ! body
+         end do
+       end do
+     end do
+
 
 Example
 =======
 
 Consider the following subroutine::
 
-  subroutine gradient(f, {{n}}, h, gradf) bind(c, name="divergence")
+  subroutine gradient(f, <{n}>, h, gradf) bind(c, name="divergence")
     real(c_double), intent(in)        :: f({{n}})
-    integer(c_int), intent(in), value :: {{n}}
+    integer(c_int), intent(in), value :: <{n}>
     real(c_double), intent(in), value :: h
     real(c_double), intent(out)       :: gradf({{n;.}})
 
     integer :: {{ i, j, k }}
 
-    do multi({{i, j, k}}; {{n}})
+    do multi(<{i, j, k}>; <{n}>)
       {[
         gradf({{i,j,k;1}}) = f({{i,j,k}});
         gradf({{i,j,k;2}}) = f({{i,j,k}});
         gradf({{i,j,k;3}}) = f({{i,j,k}})
       ]}
     end do multi
+  end subroutine divergence
+
+
+In two dimensions with interleaved, row-major storage, the above
+becomes::
+
+  subroutine gradient(f, n1, n2, h, gradf) bind(c, name="divergence")
+    real(c_double), intent(in)        :: f(n2, n1)
+    integer(c_int), intent(in), value :: n1, n2
+    real(c_double), intent(in), value :: h
+    real(c_double), intent(out)       :: gradf(2, n2, n1)
+
+    integer :: j, i
+
+    do i = 1, n1
+      do j = 1, n2
+        gradf(1, j, i) = f(j, i)
+        gradf(2, j, i) = f(j, i)
+      end do
+    end do
   end subroutine divergence

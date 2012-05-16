@@ -28,16 +28,19 @@ class Transform(object):
 
 
     def select(self, string):
+        """Select appropriate dim from ({ 1d; 2d; 3d })."""
         toks = string.split(';')
         return toks[self.dim-1]
 
 
     def concat(self, string):
+        """Concatenate up to appropriate dim from [{ 1d; 2d; 3d }]."""
         toks = string.split(';')
         return ''.join(toks[:self.dim])
 
 
     def do_multi(self, indexes, body):
+        """Expand ``do multi(indexes; from; to)``.  The 'from' clause is optional."""
 
         toks = indexes.split(';')
         if len(toks) > 2:
@@ -60,6 +63,8 @@ class Transform(object):
 
 
     def indexing(self, string, plain=False):
+        """Expand {{...}} or <{...}> indexes."""
+
         toks = string.split(';')
 
         if len(toks) > 1:
@@ -94,6 +99,7 @@ class Transform(object):
 
 
     def transform(self, cur):
+        """Transform buffer *cur* buffer."""
 
         # first pass: curly brace transforms
         while True:
