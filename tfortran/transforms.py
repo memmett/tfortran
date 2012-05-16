@@ -15,7 +15,7 @@ class Transform(object):
         self.bt = re.compile('(<|{|\(|\[){([^{}]+)}(\)|\]|}|>)')
 
         # do multi: do multi(i, j, k; nx, ny, nz) ... end do multi
-        self.dm = re.compile('do\s+multi\(([^)]+)\)(.*?)end\s+do\s+multi', re.DOTALL)
+        self.dm = re.compile('do\s+multi\(([^)]+)\)(.*?)end\s+do', re.DOTALL)
 
 
     def auto_expand(self, dims):
@@ -40,12 +40,18 @@ class Transform(object):
     def do_multi(self, indexes, body):
 
         toks = indexes.split(';')
-        ltoks = toks[0].split(',') # loop tokens
-        rtoks = toks[1].split(',') # range tokens
+        if len(toks) > 2:
+            ltoks = toks[0].split(',') # loop tokens
+            ftoks = toks[1].split(',') # from tokens
+            ttoks = toks[2].split(',') # to tokens
+        else:
+            ltoks = toks[0].split(',') # loop tokens
+            ftoks = self.dim * ['1']  # from tokens
+            ttoks = toks[1].split(',') # to tokens
 
         src = []
         for i in range(len(ltoks)):
-            src.append('do %s = 1, %s' % (ltoks[i], rtoks[i]))
+            src.append('do %s = %s, %s' % (ltoks[i], ftoks[i], ttoks[i]))
         src.append(body)
         for i in range(len(ltoks)):
             src.append('end do')
@@ -61,7 +67,7 @@ class Transform(object):
             dims = dims.split(',')
             dims = self.auto_expand(dims)
 
-            if comp == '.':
+            if comp.strip() == '.':
                 comp = str(self.dim)
 
             if self.compress and self.dim == 1 and comp == '1':
@@ -94,7 +100,7 @@ class Transform(object):
             m = self.bt.search(cur)
             if m:
                 new = cur[:m.start(0)]
-                
+
                 if m.group(1) == '{':
                     new += self.indexing(m.group(2), plain=False)
                 elif m.group(1) == '<':
