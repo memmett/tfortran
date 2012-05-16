@@ -12,6 +12,14 @@ To transform ``input`` and write to ``output``::
 The default dimension is 3.
 
 
+Known issues
+============
+
+#. Error reporting during the transformation process is non-existant.
+
+#. I'm not sure I've settled on the notation... suggestions are welcome.
+
+
 Transformations
 ===============
 
